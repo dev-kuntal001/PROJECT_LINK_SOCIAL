@@ -665,8 +665,6 @@ export const TwitchIcon: React.FC<IconProps> = ({ className = 'w-5 h-5', size, .
 // GDG Four-Colour Bracket Logo — rounded pill arms matching official GDG on Campus branding
 // Left bracket <: Red top arm, Blue bottom arm  Right bracket >: Green top arm, Yellow bottom arm
 export const GdgLogoIcon: React.FC<IconProps> = ({ className = 'w-6 h-6', size, ...props }) => {
-  // Use a unique id suffix per instance to avoid clip-path collisions in the DOM
-  const uid = React.useId().replace(/:/g, '');
   return (
     <svg
       width={size}
@@ -678,16 +676,12 @@ export const GdgLogoIcon: React.FC<IconProps> = ({ className = 'w-6 h-6', size, 
       aria-label="GDG on Campus Logo"
       {...props}
     >
-      <defs>
-        <clipPath id={`gdgTop_${uid}`}><rect x="0" y="0" width="120" height="40" /></clipPath>
-        <clipPath id={`gdgBot_${uid}`}><rect x="0" y="40" width="120" height="40" /></clipPath>
-      </defs>
       {/* Left bracket < : top arm Red, bottom arm Blue */}
-      <line x1="52" y1="10" x2="18" y2="40" stroke="#EA4335" strokeWidth="16" strokeLinecap="round" clipPath={`url(#gdgTop_${uid})`} />
-      <line x1="18" y1="40" x2="52" y2="70" stroke="#4285F4" strokeWidth="16" strokeLinecap="round" clipPath={`url(#gdgBot_${uid})`} />
+      <line x1="46" y1="16" x2="22" y2="40" stroke="#EA4335" strokeWidth="14" strokeLinecap="round" />
+      <line x1="22" y1="40" x2="46" y2="64" stroke="#4285F4" strokeWidth="14" strokeLinecap="round" />
       {/* Right bracket > : top arm Green, bottom arm Yellow */}
-      <line x1="68" y1="10" x2="102" y2="40" stroke="#34A853" strokeWidth="16" strokeLinecap="round" clipPath={`url(#gdgTop_${uid})`} />
-      <line x1="102" y1="40" x2="68" y2="70" stroke="#FBBC04" strokeWidth="16" strokeLinecap="round" clipPath={`url(#gdgBot_${uid})`} />
+      <line x1="74" y1="16" x2="98" y2="40" stroke="#34A853" strokeWidth="14" strokeLinecap="round" />
+      <line x1="98" y1="40" x2="74" y2="64" stroke="#FBBC04" strokeWidth="14" strokeLinecap="round" />
     </svg>
   );
 };
@@ -701,11 +695,14 @@ export function renderPlatformIcon(platform: string, className = 'w-5 h-5') {
     case 'youtube': return <YoutubeIcon className={className} />;
     case 'discord': return <DiscordIcon className={className} />;
     case 'spotify': return <SpotifyIcon className={className} />;
+    case 'email':
     case 'mail': return <MailIcon className={className} />;
     case 'substack': return <SubstackIcon className={className} />;
     case 'medium': return <MediumIcon className={className} />;
     case 'tiktok': return <TikTokIcon className={className} />;
     case 'twitch': return <TwitchIcon className={className} />;
+    case 'sparkles': return <SparklesIcon className={className} />;
+    case 'website':
     case 'globe':
     default:
       return <GlobeIcon className={className} />;

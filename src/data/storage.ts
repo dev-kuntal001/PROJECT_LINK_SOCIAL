@@ -5,6 +5,7 @@ import { normalizeUrl } from '../utils/url';
 const STORAGE_KEYS = {
   PROFILE: 'linkbio_profile_v1',
   LINKS: 'linkbio_links_v1',
+  MIGRATED_ANALYTICS_V2: 'linkbio_migrated_analytics_v2',
 };
 
 class StorageService {
@@ -46,8 +47,43 @@ class StorageService {
     return updated;
   }
 
+  // One-time migration: zero out any dummy click counts seeded from the original mock data
+  private migrateAnalyticsV2(): void {
+    if (!this.isBrowser()) return;
+    if (window.localStorage.getItem(STORAGE_KEYS.MIGRATED_ANALYTICS_V2)) return;
+    try {
+      const data = window.localStorage.getItem(STORAGE_KEYS.LINKS);
+      if (data) {
+        const parsed: LinkItemData[] = JSON.parse(data);
+        // The legacy dummy IDs are link_1 through link_5 with known fake click values
+        const DUMMY_CLICKS: Record<string, number> = {
+          link_1: 1420,
+          link_2: 3190,
+          link_3: 2340,
+          link_4: 890,
+          link_5: 520,
+        };
+        const needsMigration = parsed.some(
+          (l) => DUMMY_CLICKS[l.id] !== undefined && l.clicks === DUMMY_CLICKS[l.id]
+        );
+        if (needsMigration) {
+          const cleaned = parsed.map((l) =>
+            DUMMY_CLICKS[l.id] !== undefined && l.clicks === DUMMY_CLICKS[l.id]
+              ? { ...l, clicks: 0 }
+              : l
+          );
+          window.localStorage.setItem(STORAGE_KEYS.LINKS, JSON.stringify(cleaned));
+        }
+      }
+      window.localStorage.setItem(STORAGE_KEYS.MIGRATED_ANALYTICS_V2, '1');
+    } catch (e) {
+      console.warn('Analytics migration v2 failed:', e);
+    }
+  }
+
   // Links operations
   getLinks(): LinkItemData[] {
+    this.migrateAnalyticsV2();
     if (!this.isBrowser()) return INITIAL_LINKS;
     try {
       const data = window.localStorage.getItem(STORAGE_KEYS.LINKS);

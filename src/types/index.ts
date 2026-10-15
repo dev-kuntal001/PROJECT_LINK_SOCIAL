@@ -29,6 +29,7 @@ export interface SocialLinks {
   tiktok?: string;
   twitch?: string;
   website?: string;
+  [key: string]: string | undefined;
 }
 
 export interface LinkItemData {
@@ -44,6 +45,11 @@ export interface LinkItemData {
   featured?: boolean; // Spotlight badge or pulse
 }
 
+export interface CustomSocialPlatform {
+  name: string;
+  icon?: string;
+}
+
 export interface ProfileData {
   id: string;
   username: string; // Slug used in public URL e.g. /alexrivera
@@ -54,6 +60,7 @@ export interface ProfileData {
   buttonStyle: ButtonStyle;
   verified: boolean;
   socials: SocialLinks;
+  customSocialPlatforms?: Record<string, CustomSocialPlatform>;
   createdAt: string;
   updatedAt: string;
 }

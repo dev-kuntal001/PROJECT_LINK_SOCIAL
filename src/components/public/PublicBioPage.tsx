@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { createPortal } from 'react-dom';
 import { ButtonStyle, LinkItemData, ProfileData, ThemeConfig } from '../../types';
 import { THEMES } from '../../themes/themeConfig';
 import {
@@ -13,6 +14,12 @@ import {
   XCloseIcon,
   GdgLogoIcon,
 } from '../icons';
+import {
+  getSocialHref,
+  getPlatformLabel,
+  getPlatformIconName,
+  isValidSocialEntry,
+} from '../../data/socialPlatforms';
 
 interface PublicBioPageProps {
   profile: ProfileData;
@@ -117,7 +124,8 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
   };
 
   const socialEntries = Object.entries(profile.socials || {}).filter(
-    ([, val]) => Boolean(val && val.trim())
+    (entry): entry is [string, string] =>
+      Boolean(entry[1] && entry[1].trim() && isValidSocialEntry(entry[0], entry[1]))
   );
 
   return (
@@ -136,7 +144,7 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
               }`}
           >
             <div className="flex items-center gap-2">
-              <GdgLogoIcon className={`w-8 h-5 ${isDark ? 'opacity-100' : 'opacity-90'}`} />
+              <GdgLogoIcon className="w-8 h-5" />
               <span className="text-xs font-black tracking-wider uppercase">GDG OC FIEM</span>
             </div>
             <div className="flex items-center gap-2">
@@ -223,7 +231,7 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
                 src={profile.avatarUrl}
                 alt={profile.displayName}
                 onError={() => setAvatarError(true)}
-                className="w-full h-full object-cover rounded-full filter grayscale contrast-110 hover:grayscale-0 transition-all duration-300"
+                className="w-full h-full object-cover rounded-full"
               />
             ) : (
               <div className="w-full h-full rounded-full bg-[#111111] flex items-center justify-center font-bold text-xl text-white font-mono">
@@ -283,18 +291,25 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
         {/* Social Links Row */}
         {socialEntries.length > 0 && (
           <div className="flex items-center justify-center flex-wrap gap-2.5 mb-7">
-            {socialEntries.map(([platform, url]) => (
-              <a
-                key={platform}
-                href={url.startsWith('http') || url.startsWith('mailto:') ? url : `https://${url}`}
-                target="_blank"
-                rel="noopener noreferrer"
-                title={platform}
-                className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${theme.socialIconBg} ${theme.socialIconHover}`}
-              >
-                {renderPlatformIcon(platform, 'w-4 h-4')}
-              </a>
-            ))}
+            {socialEntries.map(([platform, url]) => {
+              const iconName = getPlatformIconName(platform, profile.customSocialPlatforms);
+              const label = getPlatformLabel(platform, profile.customSocialPlatforms);
+              const href = getSocialHref(platform, url);
+
+              return (
+                <a
+                  key={platform}
+                  href={href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  title={label}
+                  aria-label={label}
+                  className={`w-10 h-10 rounded-full flex items-center justify-center transition-all duration-200 ${theme.socialIconBg} ${theme.socialIconHover}`}
+                >
+                  {renderPlatformIcon(iconName, 'w-4 h-4')}
+                </a>
+              );
+            })}
           </div>
         )}
 
@@ -377,7 +392,7 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
             : 'bg-white/80 border-neutral-300 text-neutral-700'
             }`}
         >
-          <GdgLogoIcon className="w-8 h-5 opacity-75" />
+          <GdgLogoIcon className="w-8 h-5" />
           <span>GDG on Campus FIEM</span>
           <span className="text-neutral-400">&bull;</span>
           <span className="font-serif italic font-normal opacity-75">Ordinary ends here.</span>
@@ -385,8 +400,10 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
       </footer>
 
       {/* ── Share Modal ── */}
-      {showShareModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+      {showShareModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen z-[99999] flex items-center justify-center p-4 bg-white/85 backdrop-blur-md animate-fade-in">
           <div
             className={`w-full max-w-sm rounded-2xl p-6 relative border-2 ${isDark
               ? 'bg-[#161616] border-neutral-600 text-white shadow-[6px_6px_0px_#4285F4]'
@@ -438,7 +455,8 @@ export const PublicBioPage: React.FC<PublicBioPageProps> = ({
               </button>
             </div>
           </div>
-        </div>
+        </div>,
+        document.body
       )}
     </div>
   );

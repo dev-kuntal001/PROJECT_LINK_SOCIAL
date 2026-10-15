@@ -1,16 +1,20 @@
-import React, { useRef, useState } from 'react';
-import { ProfileData, SocialLinks } from '../../types';
+import React, { useEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { CustomSocialPlatform, ProfileData, SocialLinks } from '../../types';
 import {
-  GithubIcon,
-  TwitterIcon,
-  InstagramIcon,
-  LinkedinIcon,
-  YoutubeIcon,
-  DiscordIcon,
-  SpotifyIcon,
-  MailIcon,
   CheckIcon,
+  PlusIcon,
+  XCloseIcon,
+  renderPlatformIcon,
 } from '../icons';
+import {
+  AVAILABLE_CUSTOM_ICONS,
+  PREDEFINED_PLATFORMS,
+  getPlatformColor,
+  getPlatformConfig,
+  getPlatformIconName,
+  getPlatformLabel,
+} from '../../data/socialPlatforms';
 
 interface ProfileSettingsProps {
   profile: ProfileData;
@@ -34,9 +38,30 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
   const [username, setUsername] = useState(profile.username);
   const [bio, setBio] = useState(profile.bio);
   const [avatarUrl, setAvatarUrl] = useState(profile.avatarUrl);
-  const [socials, setSocials] = useState<SocialLinks>(profile.socials || {});
+  const [socials, setSocials] = useState<SocialLinks>(() => ({ ...(profile.socials || {}) }));
+  const [customSocialPlatforms, setCustomSocialPlatforms] = useState<Record<string, CustomSocialPlatform>>(
+    () => ({ ...(profile.customSocialPlatforms || {}) })
+  );
   const [uploadError, setUploadError] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Add social modal state
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [newPlatformType, setNewPlatformType] = useState<string>('github');
+  const [newCustomName, setNewCustomName] = useState('');
+  const [newCustomIcon, setNewCustomIcon] = useState('globe');
+  const [newAccountValue, setNewAccountValue] = useState('');
+  const [addError, setAddError] = useState<string | null>(null);
+
+  // Keep state in sync if profile updates externally
+  useEffect(() => {
+    setDisplayName(profile.displayName);
+    setUsername(profile.username);
+    setBio(profile.bio);
+    setAvatarUrl(profile.avatarUrl);
+    setSocials({ ...(profile.socials || {}) });
+    setCustomSocialPlatforms({ ...(profile.customSocialPlatforms || {}) });
+  }, [profile]);
 
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     setUploadError(null);
@@ -71,16 +96,130 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
       bio: bio.trim(),
       avatarUrl: avatarUrl.trim(),
       socials,
+      customSocialPlatforms,
     });
     onNotify('Profile settings saved successfully!', 'success');
   };
 
-  const handleSocialChange = (key: keyof SocialLinks, value: string) => {
+  const handleSocialChange = (key: string, value: string) => {
     setSocials((prev) => ({
       ...prev,
-      [key]: value.trim() ? value.trim() : undefined,
+      [key]: value,
     }));
   };
+
+  const handleSocialBlur = (key: string, value: string) => {
+    const updatedSocials = {
+      ...socials,
+      [key]: value.trim(),
+    };
+    onUpdateProfile({
+      socials: updatedSocials,
+      customSocialPlatforms,
+    });
+  };
+
+  const handleRemoveSocial = (key: string) => {
+    const platformLabel = getPlatformLabel(key, customSocialPlatforms);
+    const nextSocials = { ...socials };
+    delete nextSocials[key];
+    setSocials(nextSocials);
+
+    let nextCustom = customSocialPlatforms;
+    if (customSocialPlatforms && customSocialPlatforms[key]) {
+      nextCustom = { ...customSocialPlatforms };
+      delete nextCustom[key];
+      setCustomSocialPlatforms(nextCustom);
+    }
+
+    onUpdateProfile({
+      socials: nextSocials,
+      customSocialPlatforms: nextCustom,
+    });
+    onNotify(`Removed ${platformLabel}`, 'info');
+  };
+
+  const handleOpenAddModal = () => {
+    const availablePredefined = PREDEFINED_PLATFORMS.find((p) => !(p.key in socials));
+    setNewPlatformType(availablePredefined ? availablePredefined.key : 'custom');
+    setNewCustomName('');
+    setNewCustomIcon('globe');
+    setNewAccountValue('');
+    setAddError(null);
+    setShowAddModal(true);
+  };
+
+  const handleAddSocialSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    setAddError(null);
+
+    const isCustom = newPlatformType === 'custom';
+    let targetKey = newPlatformType;
+    let label = '';
+    let icon = 'globe';
+
+    if (isCustom) {
+      const trimmedName = newCustomName.trim();
+      if (!trimmedName) {
+        setAddError('Please enter a platform name.');
+        return;
+      }
+      label = trimmedName;
+      icon = newCustomIcon || 'globe';
+      targetKey = 'custom_' + trimmedName.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString(36);
+    } else {
+      const predefined = PREDEFINED_PLATFORMS.find((p) => p.key === newPlatformType);
+      if (!predefined) {
+        setAddError('Please select a valid platform.');
+        return;
+      }
+      if (targetKey in socials) {
+        setAddError(`${predefined.name} is already connected.`);
+        return;
+      }
+      label = predefined.name;
+      icon = predefined.iconName;
+    }
+
+    const trimmedValue = newAccountValue.trim();
+    if (!trimmedValue) {
+      setAddError('Please enter a URL, username, or email.');
+      return;
+    }
+
+    if (targetKey === 'email' || newPlatformType === 'email') {
+      const emailCandidate = trimmedValue.replace(/^mailto:/i, '').trim();
+      if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailCandidate)) {
+        setAddError('Please enter a valid email address (e.g. gdg@fiem.edu.in).');
+        return;
+      }
+    }
+
+    const nextSocials: SocialLinks = {
+      ...socials,
+      [targetKey]: trimmedValue,
+    };
+    setSocials(nextSocials);
+
+    let nextCustom = customSocialPlatforms;
+    if (isCustom) {
+      nextCustom = {
+        ...customSocialPlatforms,
+        [targetKey]: { name: label, icon },
+      };
+      setCustomSocialPlatforms(nextCustom);
+    }
+
+    onUpdateProfile({
+      socials: nextSocials,
+      customSocialPlatforms: nextCustom,
+    });
+
+    onNotify(`Added ${label} successfully!`, 'success');
+    setShowAddModal(false);
+  };
+
+  const activeSocialKeys = Object.keys(socials);
 
   return (
     <form onSubmit={handleSave} className="space-y-8">
@@ -163,7 +302,7 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
               <img
                 src={avatarUrl}
                 alt="Avatar Preview"
-                className="w-full h-full object-cover filter grayscale contrast-110"
+                className="w-full h-full object-cover"
                 onError={(e) => {
                   (e.target as HTMLImageElement).src =
                     'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=400&h=400&q=80';
@@ -232,135 +371,233 @@ export const ProfileSettings: React.FC<ProfileSettingsProps> = ({
 
       {/* Social Links Form */}
       <div className="p-6 rounded-2xl bg-white border-2 border-[#111111] shadow-[4px_4px_0px_#111111] space-y-4">
-        <h3 className="text-sm font-bold uppercase tracking-wider text-[#111111]">
-          Connected Social Accounts
-        </h3>
-        <p className="text-xs text-neutral-600">
-          Add full URLs or usernames to show social icon badges on your bio page.
-        </p>
-
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
-          {/* GitHub */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <GithubIcon className="w-3.5 h-3.5 text-[#111111]" />
-              <span>GitHub</span>
-            </label>
-            <input
-              type="text"
-              value={socials.github || ''}
-              onChange={(e) => handleSocialChange('github', e.target.value)}
-              placeholder="https://github.com/gdg-fiem"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
+            <h3 className="text-sm font-bold uppercase tracking-wider text-[#111111]">
+              Connected Social Accounts
+            </h3>
+            <p className="text-xs text-neutral-600">
+              Add full URLs or usernames to show social icon badges on your bio page.
+            </p>
           </div>
 
-          {/* LinkedIn */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <LinkedinIcon className="w-3.5 h-3.5 text-[#4285F4]" />
-              <span>LinkedIn</span>
-            </label>
-            <input
-              type="text"
-              value={socials.linkedin || ''}
-              onChange={(e) => handleSocialChange('linkedin', e.target.value)}
-              placeholder="https://linkedin.com/company/gdgfiem"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* Instagram */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <InstagramIcon className="w-3.5 h-3.5 text-[#EA4335]" />
-              <span>Instagram</span>
-            </label>
-            <input
-              type="text"
-              value={socials.instagram || ''}
-              onChange={(e) => handleSocialChange('instagram', e.target.value)}
-              placeholder="https://instagram.com/gdgfiem"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* Twitter / X */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <TwitterIcon className="w-3.5 h-3.5 text-[#111111]" />
-              <span>X (Twitter)</span>
-            </label>
-            <input
-              type="text"
-              value={socials.twitter || ''}
-              onChange={(e) => handleSocialChange('twitter', e.target.value)}
-              placeholder="https://x.com/gdgfiem"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* YouTube */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <YoutubeIcon className="w-3.5 h-3.5 text-[#EA4335]" />
-              <span>YouTube</span>
-            </label>
-            <input
-              type="text"
-              value={socials.youtube || ''}
-              onChange={(e) => handleSocialChange('youtube', e.target.value)}
-              placeholder="https://youtube.com/@gdgfiem"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* Discord */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <DiscordIcon className="w-3.5 h-3.5 text-[#4285F4]" />
-              <span>Discord Community</span>
-            </label>
-            <input
-              type="text"
-              value={socials.discord || ''}
-              onChange={(e) => handleSocialChange('discord', e.target.value)}
-              placeholder="https://discord.gg/..."
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* Email */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <MailIcon className="w-3.5 h-3.5 text-[#34A853]" />
-              <span>Official Email</span>
-            </label>
-            <input
-              type="email"
-              value={socials.email || ''}
-              onChange={(e) => handleSocialChange('email', e.target.value)}
-              placeholder="gdg@fiem.edu.in"
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
-
-          {/* Spotify */}
-          <div>
-            <label className="flex items-center gap-2 text-xs font-bold text-neutral-700 mb-1">
-              <SpotifyIcon className="w-3.5 h-3.5 text-[#34A853]" />
-              <span>Spotify Playlist</span>
-            </label>
-            <input
-              type="text"
-              value={socials.spotify || ''}
-              onChange={(e) => handleSocialChange('spotify', e.target.value)}
-              placeholder="https://open.spotify.com/..."
-              className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
-            />
-          </div>
+          <button
+            type="button"
+            onClick={handleOpenAddModal}
+            className="self-start sm:self-auto inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border-2 border-[#111111] shadow-[2px_2px_0px_#111111] hover:shadow-[1px_1px_0px_#111111] hover:translate-x-0.5 hover:translate-y-0.5 transition cursor-pointer"
+          >
+            <PlusIcon className="w-3.5 h-3.5 text-[#34A853]" />
+            <span>+ Add Social</span>
+          </button>
         </div>
+
+        {activeSocialKeys.length === 0 ? (
+          <div className="p-6 rounded-xl border-2 border-dashed border-neutral-300 bg-neutral-50/50 text-center space-y-2">
+            <p className="text-xs font-mono text-neutral-500">
+              No connected social accounts yet.
+            </p>
+            <button
+              type="button"
+              onClick={handleOpenAddModal}
+              className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-xs font-bold bg-white border-2 border-[#111111] shadow-[2px_2px_0px_#111111] hover:shadow-[1px_1px_0px_#111111] transition"
+            >
+              <PlusIcon className="w-3.5 h-3.5 text-[#34A853]" />
+              <span>Add your first account</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+            {activeSocialKeys.map((key) => {
+              const platformLabel = getPlatformLabel(key, customSocialPlatforms);
+              const platformIcon = getPlatformIconName(key, customSocialPlatforms);
+              const platformColor = getPlatformColor(key, customSocialPlatforms);
+              const config = getPlatformConfig(key);
+              const placeholder = config?.placeholder || 'https://... or @username';
+              const inputType = config?.inputType || 'text';
+
+              return (
+                <div key={key} className="group relative">
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="flex items-center gap-2 text-xs font-bold text-neutral-700">
+                      <span style={{ color: platformColor }}>
+                        {renderPlatformIcon(platformIcon, 'w-3.5 h-3.5')}
+                      </span>
+                      <span>{platformLabel}</span>
+                    </label>
+
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveSocial(key);
+                      }}
+                      title={`Remove ${platformLabel}`}
+                      aria-label={`Remove ${platformLabel}`}
+                      className="opacity-0 group-hover:opacity-100 focus:opacity-100 text-neutral-400 hover:text-[#EA4335] hover:bg-neutral-100 px-1 py-0.5 rounded transition text-xs font-bold leading-none cursor-pointer"
+                    >
+                      <XCloseIcon className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+
+                  <input
+                    type={inputType}
+                    value={socials[key] ?? ''}
+                    onChange={(e) => handleSocialChange(key, e.target.value)}
+                    onBlur={(e) => handleSocialBlur(key, e.target.value)}
+                    placeholder={placeholder}
+                    className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
+                  />
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Add Social Modal */}
+      {showAddModal &&
+        typeof document !== 'undefined' &&
+        createPortal(
+          <div className="fixed inset-0 top-0 left-0 right-0 bottom-0 w-screen h-screen z-[99999] flex items-center justify-center p-4 bg-white/85 backdrop-blur-md animate-fade-in">
+          <div className="w-full max-w-md rounded-2xl p-6 relative border-2 border-[#111111] bg-[#F4F1E9] text-[#111111] shadow-[6px_6px_0px_#111111] space-y-4">
+            <button
+              type="button"
+              onClick={() => setShowAddModal(false)}
+              className="absolute top-4 right-4 p-1 border-2 border-[#111111] rounded-lg bg-white text-[#111111] shadow-[2px_2px_0px_#111111] hover:translate-x-0.5 hover:translate-y-0.5 transition cursor-pointer"
+            >
+              <XCloseIcon className="w-4 h-4" />
+            </button>
+
+            <div>
+              <div className="editorial-badge mb-1.5">SOCIAL CHANNELS</div>
+              <h3 className="text-lg font-black text-[#111111] tracking-tight">
+                Add Connected Social Account
+              </h3>
+              <p className="text-xs text-neutral-600 mt-0.5">
+                Select a supported social network or set up a custom platform.
+              </p>
+            </div>
+
+            {addError && (
+              <div className="p-2.5 rounded-xl bg-red-100 border-2 border-[#EA4335] text-xs text-[#EA4335] font-bold">
+                {addError}
+              </div>
+            )}
+
+            <div className="space-y-3.5">
+              {/* Platform Selector */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                  Choose Platform
+                </label>
+                <select
+                  value={newPlatformType}
+                  onChange={(e) => {
+                    setNewPlatformType(e.target.value);
+                    setAddError(null);
+                  }}
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border-2 border-[#111111] text-xs font-bold text-[#111111] focus:outline-none focus:border-[#4285F4] shadow-inner"
+                >
+                  <optgroup label="Supported Platforms">
+                    {PREDEFINED_PLATFORMS.map((plat) => {
+                      const isAlreadyAdded = plat.key in socials;
+                      return (
+                        <option key={plat.key} value={plat.key} disabled={isAlreadyAdded}>
+                          {plat.name} {isAlreadyAdded ? '(Already connected)' : ''}
+                        </option>
+                      );
+                    })}
+                  </optgroup>
+                  <optgroup label="Custom Platform">
+                    <option value="custom">➕ Custom Platform...</option>
+                  </optgroup>
+                </select>
+              </div>
+
+              {/* Custom Platform Details */}
+              {newPlatformType === 'custom' && (
+                <div className="space-y-3 p-3.5 rounded-xl border-2 border-[#111111] bg-white shadow-inner">
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                      Custom Platform Name
+                    </label>
+                    <input
+                      type="text"
+                      value={newCustomName}
+                      onChange={(e) => setNewCustomName(e.target.value)}
+                      placeholder="e.g. Threads, Mastodon, Telegram, Behance"
+                      className="w-full px-3 py-2 rounded-xl bg-neutral-50 border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4]"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                      Choose Platform Icon
+                    </label>
+                    <div className="grid grid-cols-7 gap-1.5 max-h-32 overflow-y-auto p-1 custom-scrollbar">
+                      {AVAILABLE_CUSTOM_ICONS.map((icon) => (
+                        <button
+                          key={icon.id}
+                          type="button"
+                          onClick={() => setNewCustomIcon(icon.id)}
+                          title={icon.label}
+                          className={`w-9 h-9 rounded-lg border-2 flex items-center justify-center transition cursor-pointer ${
+                            newCustomIcon === icon.id
+                              ? 'border-[#4285F4] bg-[#4285F4]/10 text-[#4285F4] shadow-[2px_2px_0px_#4285F4]'
+                              : 'border-neutral-200 bg-neutral-50 text-neutral-700 hover:border-neutral-400'
+                          }`}
+                        >
+                          {renderPlatformIcon(icon.id, 'w-4 h-4')}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {/* URL / Username / Email Input */}
+              <div>
+                <label className="block text-xs font-bold uppercase tracking-wider text-neutral-700 mb-1">
+                  {newPlatformType === 'email' ? 'Email Address' : 'URL or Username'}
+                </label>
+                <input
+                  type={newPlatformType === 'email' ? 'email' : 'text'}
+                  value={newAccountValue}
+                  onChange={(e) => setNewAccountValue(e.target.value)}
+                  placeholder={
+                    newPlatformType === 'custom'
+                      ? 'https://example.com/handle or @username'
+                      : getPlatformConfig(newPlatformType)?.placeholder || 'https://...'
+                  }
+                  className="w-full px-3 py-2.5 rounded-xl bg-white border-2 border-[#111111] text-xs font-mono text-[#111111] focus:outline-none focus:border-[#4285F4] shadow-inner"
+                />
+              </div>
+            </div>
+
+            {/* Modal Actions */}
+            <div className="flex items-center justify-end gap-2.5 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowAddModal(false)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-white border-2 border-[#111111] shadow-[2px_2px_0px_#111111] hover:translate-x-0.5 hover:translate-y-0.5 transition cursor-pointer"
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleAddSocialSubmit}
+                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold text-white bg-[#111111] border-2 border-[#111111] shadow-[2px_2px_0px_#4285F4] hover:translate-x-0.5 hover:translate-y-0.5 transition cursor-pointer"
+              >
+                <PlusIcon className="w-3.5 h-3.5 text-[#34A853]" />
+                <span>Add Account</span>
+              </button>
+            </div>
+          </div>
+        </div>,
+        document.body
+      )}
 
       {/* Save Button */}
       <div className="flex items-center justify-end">
